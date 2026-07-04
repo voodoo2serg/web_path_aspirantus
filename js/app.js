@@ -11,6 +11,8 @@ const SCREENS = [
 let currentScreen = "journey";
 let journeyCache = null;
 let interviewSession = null;
+let interviewRecorder = null;
+let interviewRecordChunks = [];
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -22,6 +24,42 @@ function statusPill(status) {
   if (status === "done") return '<span class="pill success">done</span>';
   if (status === "in_progress") return '<span class="pill accent">в работе</span>';
   return '<span class="pill">todo</span>';
+}
+
+async function pollInterviewSession(sessionId, prevQuestion, maxAttempts = 30) {
+  for (let i = 0; i < maxAttempts; i += 1) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const data = await PathApi.interviewGet(sessionId);
+    if (data.completed || data.current_question !== prevQuestion) {
+      return data;
+    }
+  }
+  return PathApi.interviewGet(sessionId);
+}
+
+async function startInterviewRecording(sessionId, btn) {
+  if (interviewRecorder?.state === "recording") {
+    interviewRecorder.stop();
+    return;
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  interviewRecordChunks = [];
+  interviewRecorder = new MediaRecorder(stream);
+  interviewRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) interviewRecordChunks.push(e.data);
+  };
+  interviewRecorder.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    btn.textContent = "Расшифровка…";
+    btn.disabled = true;
+    const blob = new Blob(interviewRecordChunks, { type: interviewRecorder.mimeType || "audio/webm" });
+    const prevQ = interviewSession?.current_question;
+    await PathApi.interviewVoice(sessionId, blob);
+    interviewSession = await pollInterviewSession(sessionId, prevQ);
+    renderInterview(document.getElementById("screen-root"));
+  };
+  interviewRecorder.start();
+  btn.textContent = "Стоп";
 }
 
 async function renderInterview(root) {
@@ -67,10 +105,12 @@ async function renderInterview(root) {
         <button class="btn" id="interview-restart">Новое интервью</button>
       ` : `
         <textarea id="interview-answer" rows="4" placeholder="Ваш ответ…"></textarea>
-        <div class="row" style="margin-top:8px;gap:8px">
+        <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
           <button class="btn primary" id="interview-send">Ответить</button>
+          <button class="btn" id="interview-voice" title="Запись с микрофона">🎙 Запись</button>
           <button class="btn" id="interview-save">Сохранить сессию</button>
         </div>
+        <p class="muted" style="margin-top:8px;font-size:0.8rem">Микрофон телефона или ноутбука — без привязки к конкретному диктофону.</p>
       `}
     </div>`;
 
@@ -91,6 +131,14 @@ async function renderInterview(root) {
     root.querySelector(".card").innerHTML = "<p class='muted'>Обработка…</p>";
     interviewSession = await PathApi.interviewAnswer(s.session_id, answer);
     renderInterview(root);
+  });
+
+  document.getElementById("interview-voice")?.addEventListener("click", async (e) => {
+    try {
+      await startInterviewRecording(s.session_id, e.target);
+    } catch (err) {
+      alert(err.message || "Не удалось получить доступ к микрофону");
+    }
   });
 }
 

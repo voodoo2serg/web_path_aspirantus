@@ -78,6 +78,30 @@ const PathApi = {
   interviewFinalize(sessionId) {
     return this.request(`/portal/interview/sessions/${sessionId}/finalize`, { method: "POST" });
   },
+
+  async interviewVoice(sessionId, blob, filename = "voice.webm") {
+    const form = new FormData();
+    form.append("audio", blob, filename);
+    const headers = {};
+    if (this.token()) headers.Authorization = `Bearer ${this.token()}`;
+    const res = await fetch(`${PathConfig.apiBase}/portal/interview/sessions/${sessionId}/voice`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (res.status === 401) {
+      localStorage.removeItem("path_token");
+      location.href = "index.html";
+      throw new Error("Сессия истекла");
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    return data;
+  },
+
+  interviewGet(sessionId) {
+    return this.request(`/portal/interview/sessions/${sessionId}`);
+  },
 };
 
 window.PathApi = PathApi;
