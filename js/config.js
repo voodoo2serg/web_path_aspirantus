@@ -13,8 +13,8 @@
   }
 
   function defaultProUrl() {
-    if (host === "213.171.9.30") return "http://213.171.9.30:3010";
-    return "http://localhost:3002";
+    if (host === "213.171.9.30") return "http://213.171.9.30:3010/login";
+    return "http://localhost:3002/login";
   }
 
   // Ignore stale localStorage pointing at localhost when opened on VPS
