@@ -203,8 +203,8 @@ async function renderArticles(root) {
   const d = await PathApi.articleDraft();
   const recs = d.recommendations || [];
   const quotaNote = j.articles_design_quota_fulfilled
-    ? `<p class="pill accent">Квота Path выполнена (${j.articles_tracked}/${j.articles_required} спроектировано). Новые черновики не генерируем — только мотивация и напоминания.</p>`
-    : `<p class="muted">Статей в работе: ${j.articles_tracked}/${j.articles_required}</p>`;
+    ? `<p class="pill accent">Квота Path выполнена (${j.articles_tracked}/${j.articles_required}). Новые черновики не генерируем.</p>`
+    : `<p class="muted">${esc(j.articles_quota_label || `Статей: ${j.articles_tracked}/${j.articles_required}`)}</p>`;
   root.innerHTML = `
     <div class="card">
       ${quotaNote}
