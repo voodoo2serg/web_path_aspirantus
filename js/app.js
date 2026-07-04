@@ -47,7 +47,7 @@ async function renderInterview(root) {
   }
 
   const s = interviewSession;
-  const done = s.completed || s.state === "completed" || s.state === "storage";
+  const done = s.completed || ["COMPLETED", "STORAGE"].includes(s.state);
   const progress = s.max_questions
     ? Math.min(100, Math.round((s.question_index / s.max_questions) * 100))
     : 0;
