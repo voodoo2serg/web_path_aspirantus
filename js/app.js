@@ -1,5 +1,6 @@
 const SCREENS = [
   { id: "journey", label: "Мой путь" },
+  { id: "interview", label: "Интервью" },
   { id: "topic", label: "Тема" },
   { id: "articles", label: "Статьи" },
   { id: "dissertation", label: "Диссертация" },
@@ -9,6 +10,7 @@ const SCREENS = [
 
 let currentScreen = "journey";
 let journeyCache = null;
+let interviewSession = null;
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -20,6 +22,76 @@ function statusPill(status) {
   if (status === "done") return '<span class="pill success">done</span>';
   if (status === "in_progress") return '<span class="pill accent">в работе</span>';
   return '<span class="pill">todo</span>';
+}
+
+async function renderInterview(root) {
+  if (!interviewSession) {
+    root.innerHTML = `
+      <div class="card">
+        <h2>Interview OS</h2>
+        <p class="muted">Короткое интервью поможет зафиксировать тему, гипотезу и структуру статьи.</p>
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn primary" data-mode="quick">Quick · 3 мин</button>
+          <button class="btn" data-mode="standard">Standard · 10–15 мин</button>
+          <button class="btn" data-mode="deep">Deep · 60 мин</button>
+        </div>
+      </div>`;
+    root.querySelectorAll("[data-mode]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        root.innerHTML = "<p class='muted'>Запуск интервью…</p>";
+        interviewSession = await PathApi.interviewStart(btn.dataset.mode);
+        renderInterview(root);
+      });
+    });
+    return;
+  }
+
+  const s = interviewSession;
+  const done = s.completed || s.state === "completed" || s.state === "storage";
+  const progress = s.max_questions
+    ? Math.min(100, Math.round((s.question_index / s.max_questions) * 100))
+    : 0;
+
+  root.innerHTML = `
+    <div class="card">
+      <div class="row">
+        <span class="pill accent">${esc(s.mode)}</span>
+        <span class="muted">${esc(s.state)} · ${s.question_index}/${s.max_questions}</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
+      ${s.current_question ? `<p class="interview-question">${esc(s.current_question)}</p>` : ""}
+      ${done ? `
+        <h3>Извлечено</h3>
+        <p><strong>Тема:</strong> ${esc(s.extracted?.topic || "—")}</p>
+        <p><strong>Гипотеза:</strong> ${esc(s.extracted?.hypothesis || "—")}</p>
+        <button class="btn" id="interview-restart">Новое интервью</button>
+      ` : `
+        <textarea id="interview-answer" rows="4" placeholder="Ваш ответ…"></textarea>
+        <div class="row" style="margin-top:8px;gap:8px">
+          <button class="btn primary" id="interview-send">Ответить</button>
+          <button class="btn" id="interview-save">Сохранить сессию</button>
+        </div>
+      `}
+    </div>`;
+
+  document.getElementById("interview-restart")?.addEventListener("click", () => {
+    interviewSession = null;
+    renderInterview(root);
+  });
+
+  document.getElementById("interview-save")?.addEventListener("click", async () => {
+    interviewSession = await PathApi.interviewFinalize(s.session_id);
+    renderInterview(root);
+  });
+
+  document.getElementById("interview-send")?.addEventListener("click", async () => {
+    const ta = document.getElementById("interview-answer");
+    const answer = ta?.value?.trim();
+    if (!answer) return;
+    root.querySelector(".card").innerHTML = "<p class='muted'>Обработка…</p>";
+    interviewSession = await PathApi.interviewAnswer(s.session_id, answer);
+    renderInterview(root);
+  });
 }
 
 async function renderJourney(root) {
@@ -168,6 +240,7 @@ async function renderCurrent() {
   root.innerHTML = "<p class='muted'>Загрузка…</p>";
   try {
     if (currentScreen === "journey") await renderJourney(root);
+    else if (currentScreen === "interview") await renderInterview(root);
     else if (currentScreen === "topic") await renderTopic(root);
     else if (currentScreen === "articles") await renderArticles(root);
     else if (currentScreen === "dissertation") await renderDissertation(root);

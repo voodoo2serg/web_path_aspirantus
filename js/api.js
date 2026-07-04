@@ -58,6 +58,26 @@ const PathApi = {
   markRead(touchId) {
     return this.request(`/portal/companion-feed/${touchId}/read`, { method: "POST" });
   },
+
+  interviewStart(mode = "quick") {
+    return this.request("/portal/interview/sessions", {
+      method: "POST",
+      body: JSON.stringify({ mode, channel: "web" }),
+    });
+  },
+
+  interviewAnswer(sessionId, answer) {
+    const key = `ans-${sessionId}-${Date.now()}`;
+    return this.request(`/portal/interview/sessions/${sessionId}/answer`, {
+      method: "POST",
+      headers: { "Idempotency-Key": key },
+      body: JSON.stringify({ answer }),
+    });
+  },
+
+  interviewFinalize(sessionId) {
+    return this.request(`/portal/interview/sessions/${sessionId}/finalize`, { method: "POST" });
+  },
 };
 
 window.PathApi = PathApi;
