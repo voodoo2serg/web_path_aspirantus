@@ -102,6 +102,13 @@ const PathApi = {
   interviewGet(sessionId) {
     return this.request(`/portal/interview/sessions/${sessionId}`);
   },
+
+  submitArticle(slotIndex, submissionUrl) {
+    return this.request("/portal/articles/submit", {
+      method: "POST",
+      body: JSON.stringify({ slot_index: slotIndex, submission_url: submissionUrl || null }),
+    });
+  },
 };
 
 window.PathApi = PathApi;

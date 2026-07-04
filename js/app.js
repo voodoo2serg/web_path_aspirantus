@@ -26,6 +26,87 @@ function statusPill(status) {
   return '<span class="pill">todo</span>';
 }
 
+function slotStatusPill(status) {
+  const map = {
+    pending: "ожидание",
+    designed: "черновик готов",
+    user_submitted: "ссылка отправлена",
+    stalled: "застой",
+    waived: "отменено",
+  };
+  const cls = status === "user_submitted" ? "success" : status === "stalled" ? "warning" : status === "designed" ? "accent" : "";
+  return `<span class="pill ${cls}">${esc(map[status] || status)}</span>`;
+}
+
+function modeLabel(mode) {
+  const map = { normal: "обычный", intensive: "интенсивный", quiet: "тихий" };
+  return map[mode] || mode || "обычный";
+}
+
+function renderEpic12Card(j) {
+  const traj = j.trajectory || {};
+  const risks = (j.risks || []).slice(0, 3);
+  const week = j.touches_this_week ?? 0;
+  const maxWeek = j.rhythm_max_per_week ?? 2;
+  return `
+    <div class="card epic12-card">
+      <h3>Маршрут · Epic 12</h3>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">
+        ${traj.label ? `<span class="pill accent">${esc(traj.label)}</span>` : ""}
+        <span class="pill">${esc(modeLabel(j.communication_mode))}</span>
+        <span class="pill ${week >= maxWeek ? "warning" : ""}">касаний: ${week}/${maxWeek} в нед</span>
+      </div>
+      ${risks.length ? `
+        <h4 style="margin:8px 0 4px;font-size:0.9rem">Риски</h4>
+        ${risks.map((r) => `<div class="list-item"><span class="pill warning">${esc(r.severity || r.level || "risk")}</span> ${esc(r.label || r.id || r.type)}</div>`).join("")}
+      ` : `<p class="muted">Рисков нет — хороший знак.</p>`}
+      ${renderRouteCard(j.route_card)}
+    </div>`;
+}
+
+function renderRouteCard(card) {
+  if (!card || (!card.university && !card.council && !card.exam_status)) return "";
+  return `
+    <h4 style="margin:12px 0 4px;font-size:0.9rem">Карточка маршрута</h4>
+    ${card.university ? `<p class="muted">Вуз: ${esc(card.university)}</p>` : ""}
+    ${card.council ? `<p class="muted">Совет: ${esc(card.council)}</p>` : ""}
+    ${card.exam_status ? `<p class="muted">Экзамены: ${esc(card.exam_status)}</p>` : ""}`;
+}
+
+function renderArticleSlots(j) {
+  const slots = j.article_slots || [];
+  if (!slots.length) return "";
+  return `
+    <div class="card">
+      <h3>Слоты статей</h3>
+      ${slots.map((s, i) => `
+        <div class="list-item row" style="align-items:flex-start;flex-wrap:wrap;gap:8px">
+          <span>#${s.index ?? i + 1}</span>
+          ${slotStatusPill(s.status || "pending")}
+          ${s.submission_url ? `<a href="${esc(s.submission_url)}" target="_blank" rel="noopener">ссылка</a>` : ""}
+          ${s.status === "designed" ? `
+            <form class="article-submit-form row" data-slot="${s.index ?? i + 1}" style="flex:1;min-width:200px;gap:6px">
+              <input type="url" name="url" placeholder="Ссылка на статью (DOI, журнал…)" required style="flex:1;margin:0" />
+              <button type="submit" class="btn primary" style="white-space:nowrap">Прислал ссылку</button>
+            </form>
+          ` : ""}
+        </div>`).join("")}
+    </div>`;
+}
+
+function renderPipelineResult(pipeline) {
+  if (!pipeline) return "";
+  const traj = pipeline.trajectory || {};
+  const decisions = pipeline.decisions || [];
+  return `
+    <div class="card pipeline-result">
+      <h3>Результат диагностики</h3>
+      ${traj.label ? `<p><strong>Траектория:</strong> ${esc(traj.label)}</p>` : ""}
+      ${decisions.length ? `<p class="muted">Решений: ${decisions.length}</p>` : ""}
+      ${pipeline.risks_evaluated != null ? `<p class="muted">Проверено рисков: ${pipeline.risks_evaluated}</p>` : ""}
+    </div>`;
+}
+
 async function pollInterviewSession(sessionId, prevQuestion, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i += 1) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -102,6 +183,7 @@ async function renderInterview(root) {
         <h3>Извлечено</h3>
         <p><strong>Тема:</strong> ${esc(s.extracted?.topic || "—")}</p>
         <p><strong>Гипотеза:</strong> ${esc(s.extracted?.hypothesis || "—")}</p>
+        ${renderPipelineResult(s.pipeline)}
         <button class="btn" id="interview-restart">Новое интервью</button>
       ` : `
         <textarea id="interview-answer" rows="4" placeholder="Ваш ответ…"></textarea>
@@ -120,7 +202,9 @@ async function renderInterview(root) {
   });
 
   document.getElementById("interview-save")?.addEventListener("click", async () => {
-    interviewSession = await PathApi.interviewFinalize(s.session_id);
+    const result = await PathApi.interviewFinalize(s.session_id);
+    interviewSession = { ...result, pipeline: result.pipeline };
+    journeyCache = null;
     renderInterview(root);
   });
 
@@ -173,7 +257,27 @@ async function renderJourney(root) {
           <span>${esc(i.title)}</span>
           <span class="pill ${i.pro_feature ? "" : "accent"}">${i.pro_feature ? "Pro" : esc(i.tag)}</span>
         </div>`).join("")}
-    </div>`;
+    </div>
+    ${renderEpic12Card(j)}
+    ${renderArticleSlots(j)}`;
+
+  root.querySelectorAll(".article-submit-form").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const slot = Number(form.dataset.slot);
+      const url = form.querySelector('input[name="url"]')?.value?.trim();
+      if (!url) return;
+      form.querySelector("button").disabled = true;
+      try {
+        await PathApi.submitArticle(slot, url);
+        journeyCache = null;
+        renderCurrent();
+      } catch (err) {
+        alert(err.message || "Не удалось отправить ссылку");
+        form.querySelector("button").disabled = false;
+      }
+    });
+  });
 
   root.querySelector("[data-complete]")?.addEventListener("click", async (e) => {
     const id = Number(e.target.dataset.complete);
@@ -215,11 +319,29 @@ async function renderArticles(root) {
       <h3>Разделы черновика</h3>
       ${Object.entries(d.sections || {}).filter(([k]) => k !== "title").map(([k, v]) => `<div class="list-item"><strong>${esc(k)}</strong><p class="muted">${esc(v)}</p></div>`).join("")}
       <button class="btn primary" id="export-article">Скачать черновик</button>
-    </div>`;
+    </div>
+    ${renderArticleSlots(j)}`;
   document.getElementById("export-article").onclick = async () => {
     const ex = await PathApi.exportDraft("article");
     window.open(ex.download_url, "_blank");
   };
+  root.querySelectorAll(".article-submit-form").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const slot = Number(form.dataset.slot);
+      const url = form.querySelector('input[name="url"]')?.value?.trim();
+      if (!url) return;
+      form.querySelector("button").disabled = true;
+      try {
+        await PathApi.submitArticle(slot, url);
+        journeyCache = null;
+        renderCurrent();
+      } catch (err) {
+        alert(err.message || "Не удалось отправить ссылку");
+        form.querySelector("button").disabled = false;
+      }
+    });
+  });
 }
 
 async function renderDissertation(root) {
