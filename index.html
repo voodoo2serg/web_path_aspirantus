@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Путь — вход</title>
+  <link rel="stylesheet" href="css/path.css" />
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <h1>Путь к защите</h1>
+    <p class="muted">Лёгкий кабинет · маршрут, задачи, черновики ~60%</p>
+    <form id="login-form">
+      <label>Email<input type="email" id="email" required autocomplete="username" /></label>
+      <label>Пароль<input type="password" id="password" required autocomplete="current-password" /></label>
+      <button type="submit" class="btn primary">Войти</button>
+      <p id="login-error" class="error" hidden></p>
+    </form>
+  </main>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script>
+    if (localStorage.getItem("path_token")) location.href = "app.html";
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const err = document.getElementById("login-error");
+      err.hidden = true;
+      try {
+        await PathApi.login(
+          document.getElementById("email").value.trim(),
+          document.getElementById("password").value
+        );
+        location.href = "app.html";
+      } catch (ex) {
+        err.textContent = ex.message || "Ошибка входа";
+        err.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>
